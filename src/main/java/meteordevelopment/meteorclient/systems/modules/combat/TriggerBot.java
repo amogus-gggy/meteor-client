@@ -22,6 +22,12 @@ import java.util.Set;
 public class TriggerBot extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
+    public enum CritMode {
+        Normal,
+        OnlyCrits,
+        PrioritizeCrits
+    }
+
     private final Setting<Set<EntityType<?>>> entities = sgGeneral.add(new EntityTypeListSetting.Builder()
         .name("entities")
         .description("Entities to attack.")
@@ -29,10 +35,10 @@ public class TriggerBot extends Module {
         .build()
     );
 
-    private final Setting<Boolean> onlyCrits = sgGeneral.add(new BoolSetting.Builder()
-        .name("only-crits")
-        .description("Only attacks when critical hit is possible.")
-        .defaultValue(false)
+    private final Setting<CritMode> critMode = sgGeneral.add(new EnumSetting.Builder<CritMode>()
+        .name("crit-mode")
+        .description("Critical hit behavior mode.")
+        .defaultValue(CritMode.Normal)
         .build()
     );
 
@@ -50,13 +56,28 @@ public class TriggerBot extends Module {
 
         // Only attack if weapon cooldown is recovered
         if (mc.player.getAttackCooldownProgress(0.5f) >= 1.0f) {
-            // Check for critical hit if only crits mode is enabled
-            if (onlyCrits.get() && !isCriticalHit()) {
-                return;
+            boolean shouldAttack = true;
+            
+            // Handle crit modes
+            switch (critMode.get()) {
+                case OnlyCrits:
+                    shouldAttack = isCriticalHit();
+                    break;
+                case PrioritizeCrits:
+                    if (canCritInFuture() && !isCriticalHit()) {
+                        shouldAttack = false; // Wait for crit opportunity
+                    }
+                    break;
+                case Normal:
+                default:
+                    // Always attack
+                    break;
             }
             
-            mc.interactionManager.attackEntity(mc.player, target);
-            mc.player.swingHand(mc.player.getActiveHand());
+            if (shouldAttack) {
+                mc.interactionManager.attackEntity(mc.player, target);
+                mc.player.swingHand(mc.player.getActiveHand());
+            }
         }
     }
 
@@ -76,6 +97,13 @@ public class TriggerBot extends Module {
         return mc.player.fallDistance > 0.0f && 
                !mc.player.isOnGround() && 
                !mc.player.isClimbing() && 
+               !mc.player.isInFluid() && 
+               !mc.player.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.BLINDNESS) &&
+               !mc.player.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.SLOW_FALLING);
+    }
+
+    private boolean canCritInFuture() {
+        return !mc.player.isClimbing() && 
                !mc.player.isInFluid() && 
                !mc.player.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.BLINDNESS) &&
                !mc.player.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.SLOW_FALLING);
