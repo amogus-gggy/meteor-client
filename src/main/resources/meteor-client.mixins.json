@@ -51,6 +51,7 @@
     "ChatHudLineVisibleMixin",
     "ChatHudMixin",
     "ChatInputSuggestorMixin",
+    "ChatScreenAccessor",
     "ChatScreenMixin",
     "ChunkAccessor",
     "ChunkBorderDebugRendererMixin",

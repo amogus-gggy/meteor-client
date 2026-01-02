@@ -1,8 +1,3 @@
-/*
- * This file is part of the Meteor Client distribution (https://github.com/MeteorDevelopment/meteor-client).
- * Copyright (c) Meteor Development.
- */
-
 package meteordevelopment.meteorclient.systems.modules.player;
 
 import meteordevelopment.meteorclient.settings.BoolSetting;
@@ -25,7 +20,7 @@ public class NameProtect extends Module {
     private final Setting<String> name = sgGeneral.add(new StringSetting.Builder()
         .name("name")
         .description("Name to be replaced with.")
-        .defaultValue("seasnail")
+        .defaultValue("seasnail") //Lets pay respect for his impact to project
         .visible(nameProtect::get)
         .build()
     );
@@ -37,7 +32,7 @@ public class NameProtect extends Module {
         .build()
     );
 
-    private String username = "If you see this, something is wrong.";
+    private String username = "";
 
     public NameProtect() {
         super(Categories.Player, "name-protect", "Hide player names and skins.");
@@ -45,22 +40,22 @@ public class NameProtect extends Module {
 
     @Override
     public void onActivate() {
-        username = mc.getSession().getUsername();
+        if (mc.getSession() != null) {
+            username = mc.getSession().getUsername();
+        }
     }
 
     public String replaceName(String string) {
-        if (string != null && isActive()) {
+        if (string != null && isActive() && nameProtect.get() && !username.isEmpty()) {
             return string.replace(username, name.get());
         }
-
         return string;
     }
 
     public String getName(String original) {
-        if (!name.get().isEmpty() && isActive()) {
+        if (isActive() && nameProtect.get() && !name.get().isEmpty()) {
             return name.get();
         }
-
         return original;
     }
 
