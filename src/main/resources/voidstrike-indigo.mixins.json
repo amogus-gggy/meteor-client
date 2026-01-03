@@ -1,0 +1,13 @@
+{
+  "required": false,
+  "package": "voidstrike_dev.voidstrike_client.mixin.indigo",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "voidstrike_dev.voidstrike_client.MixinPlugin",
+  "client": [
+    "AbstractTerrainRenderContextMixin",
+    "BlockRenderInfoMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

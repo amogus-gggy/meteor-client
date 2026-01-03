@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "Meteor Client",
-  "id": "meteor-client",
+  "id": "voidstrike-client",
   "version": "${version}",
   "description": "Based utility mod.",
   "authors": [
@@ -16,29 +16,29 @@
     "discord": "https://meteorclient.com/discord"
   },
   "license": "GPL-3.0",
-  "icon": "assets/meteor-client/icon.png",
+  "icon": "assets/voidstrike-client/icon.png",
   "environment": "client",
   "entrypoints": {
     "client": [
-      "meteordevelopment.meteorclient.MeteorClient"
+      "voidstrike_dev.voidstrike_client.MeteorClient"
     ],
     "modmenu": [
-      "meteordevelopment.meteorclient.ModMenuIntegration"
+      "voidstrike_dev.voidstrike_client.ModMenuIntegration"
     ]
   },
   "mixins": [
-    "meteor-client.mixins.json",
-    "meteor-client-baritone.mixins.json",
-    "meteor-client-indigo.mixins.json",
-    "meteor-client-sodium.mixins.json",
-    "meteor-client-lithium.mixins.json",
-    "meteor-client-viafabricplus.mixins.json"
+    "voidstrike-client.mixins.json",
+    "voidstrike-client-baritone.mixins.json",
+    "voidstrike-indigo.mixins.json",
+    "voidstrike-client-sodium.mixins.json",
+    "voidstrike-client-lithium.mixins.json",
+    "voidstrike-client-viafabricplus.mixins.json"
   ],
-  "accessWidener": "meteor-client.accesswidener",
+  "accessWidener": "voidstrike-client.accesswidener",
   "custom": {
-    "meteor-client:build_number": "${build_number}",
-    "meteor-client:color": "145,61,226",
-    "meteor-client:commit": "${commit}",
+    "voidstrike-client:build_number": "${build_number}",
+    "voidstrike-client:color": "145,61,226",
+    "voidstrike-client:commit": "${commit}",
     "modmenu": {
       "links": {
         "modmenu.discord": "https://meteorclient.com/discord"

@@ -143,7 +143,7 @@ afterEvaluate {
 }
 
 loom {
-    accessWidenerPath = file("src/main/resources/meteor-client.accesswidener")
+    accessWidenerPath = file("src/main/resources/voidstrike-client.accesswidener")
 }
 
 tasks {
@@ -185,7 +185,7 @@ tasks {
         from(launcher.output.resourcesDir)
 
         manifest {
-            attributes["Main-Class"] = "meteordevelopment.meteorclient.Main"
+            attributes["Main-Class"] = "meteordevelopment.voidstrike_client.Main"
         }
     }
 
@@ -223,7 +223,7 @@ publishing {
     publications {
         create<MavenPublication>("mavenJava") {
             from(components["java"])
-            artifactId = "meteor-client"
+            artifactId = "voidstrike-client"
 
             version = libs.versions.minecraft.get() + "-SNAPSHOT"
         }

@@ -1,0 +1,12 @@
+{
+  "required": false,
+  "package": "voidstrike_dev.voidstrike_client.mixin.viafabricplus",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "voidstrike_dev.voidstrike_client.MixinPlugin",
+  "client": [
+    "GeneralSettingsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

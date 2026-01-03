@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "voidstrike_dev.voidstrike_client.mixin.baritone",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "voidstrike_dev.voidstrike_client.MixinPlugin",
+  "client": [
+    "ComeCommandMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

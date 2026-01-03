@@ -1,0 +1,17 @@
+{
+  "required": false,
+  "package": "voidstrike_dev.voidstrike_client.mixin.sodium",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "voidstrike_dev.voidstrike_client.MixinPlugin",
+  "client": [
+    "SodiumBlockOcclusionCacheMixin",
+    "SodiumBlockRendererMixin",
+    "SodiumFluidRendererImplDefaultRenderContextMixin",
+    "SodiumFluidRendererImplMixin",
+    "SodiumLightDataAccessMixin",
+    "SodiumWorldRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

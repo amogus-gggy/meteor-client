@@ -1,0 +1,13 @@
+{
+  "required": false,
+  "package": "voidstrike_dev.voidstrike_client.mixin.lithium",
+  "compatibilityLevel": "JAVA_21",
+  "plugin": "voidstrike_dev.voidstrike_client.MixinPlugin",
+  "client": [
+    "ChunkAwareBlockCollisionSweeperMixin",
+    "LithiumEntityCollisionsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
