@@ -52,6 +52,8 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 
+import static voidstrike_dev.voidstrike_client.utils.Utils.random;
+
 public class KillAura extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgTargeting = settings.createGroup("Targeting");
@@ -316,6 +318,17 @@ public class KillAura extends Module {
     private boolean wasSprinting = false;
     private long lastAttackTime = 0;
 
+    // DVD screensaver style movement variables
+    private double dvdX = 1.0;
+    private double dvdY = 1.0;
+    private double dvdZ = 1.0;
+    private double dvdSpeed = 0.5;
+
+    // DVD movement state variables
+    private Vec3d rotationPoint = Vec3d.ZERO;
+    private Vec3d rotationMotion = Vec3d.ZERO;
+    private Vec3d smoothTargetPoint = Vec3d.ZERO; // Плавная целевая точка
+
     public KillAura() {
         super(Categories.Combat, "kill-aura", "Attacks specified entities around you.");
     }
@@ -326,6 +339,12 @@ public class KillAura extends Module {
         swapped = false;
         wasSprinting = false;
         lastAttackTime = 0;
+        
+        // Полная переинициализация KillAura
+        targets.clear();
+        rotationPoint = Vec3d.ZERO;
+        rotationMotion = Vec3d.ZERO;
+        smoothTargetPoint = Vec3d.ZERO;
     }
 
     @Override
@@ -534,17 +553,69 @@ public class KillAura extends Module {
         // Simulate mouse click using the same method as InputCommand
         KeyBindingAccessor accessor = (KeyBindingAccessor) mc.options.attackKey;
         accessor.meteor$setTimesPressed(accessor.meteor$getTimesPressed() + 1);
-        
+
         lastAttackTime = System.currentTimeMillis();
         hitTimer = 0;
     }
 
     private void aimbotRotate(Entity target) {
-        double targetYaw = Rotations.getYaw(target);
-        double targetPitch = Rotations.getPitch(target, Target.Body);
+        Box hitbox = target.getBoundingBox();
+        
+        // DVD Logo style movement - точка движется внутри хитбокса и отталкивается от стенок
+        double lenghtX = hitbox.getLengthX();
+        double lenghtY = hitbox.getLengthY();
+        double lenghtZ = hitbox.getLengthZ();
+        
+        // Задаем начальную скорость точки
+        if (rotationMotion.equals(Vec3d.ZERO)) {
+            rotationMotion = new Vec3d(random(-0.05f, 0.05f), random(-0.05f, 0.05f), random(-0.05f, 0.05f));
+        }
+        
+        rotationPoint = rotationPoint.add(rotationMotion);
+
+        // Сталкиваемся с хитбоксом по X
+        if (rotationPoint.x >= (lenghtX - 0.025) / 2f) {
+            rotationMotion = new Vec3d(-random(0.003f, 0.03f), rotationMotion.getY(), rotationMotion.getZ());
+        }
+        if (rotationPoint.x <= -(lenghtX - 0.025) / 2f) {
+            rotationMotion = new Vec3d(random(0.003f, 0.03f), rotationMotion.getY(), rotationMotion.getZ());
+        }
+
+        // Сталкиваемся с хитбоксом по Y
+        if (rotationPoint.y >= (lenghtY - 0.025) / 2f) {
+            rotationMotion = new Vec3d(rotationMotion.getX(), -random(0.001f, 0.03f), rotationMotion.getZ());
+        }
+        if (rotationPoint.y <= -(lenghtY - 0.025) / 2f) {
+            rotationMotion = new Vec3d(rotationMotion.getX(), random(0.001f, 0.03f), rotationMotion.getZ());
+        }
+
+        // Сталкиваемся с хитбоксом по Z
+        if (rotationPoint.z >= (lenghtZ - 0.025) / 2f) {
+            rotationMotion = new Vec3d(rotationMotion.getX(), rotationMotion.getY(), -random(0.003f, 0.03f));
+        }
+        if (rotationPoint.z <= -(lenghtZ - 0.025) / 2f) {
+            rotationMotion = new Vec3d(rotationMotion.getX(), rotationMotion.getY(), random(0.003f, 0.03f));
+        }
+
+        // Добавляем джиттер
+        rotationPoint.add(random(-0.03f, 0.03f), 0f, random(-0.03f, 0.03f));
+
+        // Выбираем лучшую точку для атаки
+        double centerX = (hitbox.minX + hitbox.maxX) / 2.0;
+        double centerY = (hitbox.minY + hitbox.maxY) / 2.0;
+        double centerZ = (hitbox.minZ + hitbox.maxZ) / 2.0;
+        
+        Vec3d targetPoint = new Vec3d(centerX + rotationPoint.x, centerY + rotationPoint.y, centerZ + rotationPoint.z);
+        
+        // Наведение за один тик без плавности
+        float[] rotation = PlayerUtils.calculateAngle(targetPoint);
+        double targetYaw = rotation[0];
+        double targetPitch = rotation[1];
+        
         double currentYaw = mc.player.getYaw();
         double currentPitch = mc.player.getPitch();
 
+        // Используем wrapDegrees для правильного расчета разницы
         double yawDiff = MathHelper.wrapDegrees(targetYaw - currentYaw);
         double pitchDiff = MathHelper.wrapDegrees(targetPitch - currentPitch);
 
@@ -570,30 +641,31 @@ public class KillAura extends Module {
             double newYaw = currentYaw + yawChange;
             double newPitch = currentPitch + pitchChange;
             
-            // Clamp to prevent overshooting
-            if (Math.abs(yawChange) > Math.abs(yawDiff)) {
-                newYaw = targetYaw;
-            }
-            if (Math.abs(pitchChange) > Math.abs(pitchDiff)) {
-                newPitch = targetPitch;
-            }
-            
             mc.player.setYaw((float) newYaw);
             mc.player.setPitch((float) newPitch);
         }
     }
 
     private boolean isLookingAtTarget(Entity target) {
-        // Check if player is looking at the target within a reasonable angle
+        // Check if player is looking at any part of the target's hitbox
+        Box hitbox = target.getBoundingBox();
+
+        // Generate random point within hitbox for consistency with aimbot
+        double randomX = hitbox.minX + random.nextDouble() * (hitbox.maxX - hitbox.minX);
+        double randomY = hitbox.minY + random.nextDouble() * (hitbox.maxY - hitbox.minY);
+        double randomZ = hitbox.minZ + random.nextDouble() * (hitbox.maxZ - hitbox.minZ);
+
+        Vec3d randomPoint = new Vec3d(randomX, randomY, randomZ);
+
         double yaw = mc.player.getYaw();
         double pitch = mc.player.getPitch();
-        double targetYaw = Rotations.getYaw(target);
-        double targetPitch = Rotations.getPitch(target, Target.Body);
+        double targetYaw = Rotations.getYaw(randomPoint);
+        double targetPitch = Rotations.getPitch(randomPoint);
 
         double yawDiff = Math.abs(MathHelper.wrapDegrees(targetYaw - yaw));
         double pitchDiff = Math.abs(MathHelper.wrapDegrees(targetPitch - pitch));
 
-        // Much larger tolerance for more responsive attacks
+        // Tolerance for looking at target
         return yawDiff < 15.0 && pitchDiff < 15.0;
     }
 
@@ -609,23 +681,23 @@ public class KillAura extends Module {
     private boolean isValidHitbox(Entity entity, Box hitbox) {
         // Check if hitbox is too small or too large (potential anti-cheat flags)
         double hitboxVolume = (hitbox.maxX - hitbox.minX) * (hitbox.maxY - hitbox.minY) * (hitbox.maxZ - hitbox.minZ);
-        
+
         // Minimum volume check (prevent attacking entities with tiny hitboxes)
         if (hitboxVolume < 0.1) return false;
-        
+
         // Maximum volume check (prevent attacking entities with oversized hitboxes)
         if (hitboxVolume > 8.0) return false;
-        
+
         // Check for unusual hitbox dimensions
         double width = Math.max(hitbox.maxX - hitbox.minX, hitbox.maxZ - hitbox.minZ);
         double height = hitbox.maxY - hitbox.minY;
-        
+
         // Validate aspect ratio (prevent extremely flat or tall hitboxes)
         if (width > 0 && height > 0) {
             double ratio = height / width;
             if (ratio < 0.1 || ratio > 10.0) return false;
         }
-        
+
         // Check if hitbox is within reasonable distance from entity position
         double entityCenterX = entity.getX();
         double entityCenterY = entity.getY();
@@ -633,52 +705,52 @@ public class KillAura extends Module {
         double hitboxCenterX = (hitbox.minX + hitbox.maxX) / 2.0;
         double hitboxCenterY = (hitbox.minY + hitbox.maxY) / 2.0;
         double hitboxCenterZ = (hitbox.minZ + hitbox.maxZ) / 2.0;
-        
+
         double centerDistance = Math.sqrt(
             Math.pow(entityCenterX - hitboxCenterX, 2) +
             Math.pow(entityCenterY - hitboxCenterY, 2) +
             Math.pow(entityCenterZ - hitboxCenterZ, 2)
         );
-        
+
         // Hitbox center should be close to entity position
         if (centerDistance > 2.0) return false;
-        
+
         // Additional strict validation: check if hitbox extends too far from entity
         double maxExtentX = Math.max(Math.abs(hitbox.minX - entityCenterX), Math.abs(hitbox.maxX - entityCenterX));
         double maxExtentY = Math.max(Math.abs(hitbox.minY - entityCenterY), Math.abs(hitbox.maxY - entityCenterY));
         double maxExtentZ = Math.max(Math.abs(hitbox.minZ - entityCenterZ), Math.abs(hitbox.maxZ - entityCenterZ));
-        
+
         // For players, hitbox should not extend more than 1 block from center in any direction
         if (entity instanceof PlayerEntity) {
             if (maxExtentX > 1.0 || maxExtentY > 2.0 || maxExtentZ > 1.0) return false;
         }
-        
+
         return true;
     }
 
     private boolean isWithinReach(Entity target) {
         if (!grimBypass.get() || !reachCheck.get()) return true;
-        
+
         // Get actual attack distance from player's eyes to center of target's hitbox
         Vec3d eyePos = new Vec3d(mc.player.getX(), mc.player.getEyeY(), mc.player.getZ());
         Box targetBox = target.getBoundingBox();
-        
+
         // Calculate center of hitbox
         double centerX = (targetBox.minX + targetBox.maxX) / 2.0;
         double centerY = (targetBox.minY + targetBox.maxY) / 2.0;
         double centerZ = (targetBox.minZ + targetBox.maxZ) / 2.0;
-        
+
         // Calculate distance to center of hitbox
         double distance = Math.sqrt(
             Math.pow(eyePos.x - centerX, 2) +
             Math.pow(eyePos.y - centerY, 2) +
             Math.pow(eyePos.z - centerZ, 2)
         );
-        
+
         // Use vanilla entity interaction range as base (3.0 for survival, varies with effects)
         double baseReach = mc.player.getEntityInteractionRange();
         double maxReach = Math.min(range.get(), baseReach);
-        
+
         // No buffer - strict validation to center of hitbox
         return distance <= maxReach;
     }
