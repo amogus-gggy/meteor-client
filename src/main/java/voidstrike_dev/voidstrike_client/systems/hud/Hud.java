@@ -132,6 +132,7 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         register(PotionTimersHud.INFO);
         register(CombatHud.INFO);
         register(MapHud.INFO);
+        register(TargetESP.INFO);
 
         // Default config
         if (isFirstInit) resetToDefaultElements();
@@ -201,6 +202,9 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
 
         // Top Right
         add(ActiveModulesHud.INFO, -4, 4, XAnchor.Right, YAnchor.Top);
+
+        // Center
+        add(TargetESP.INFO, 0, 30, XAnchor.Center, YAnchor.Top);
 
         // Bottom Right
         add(MeteorTextHud.POSITION, -4, -4, XAnchor.Right, YAnchor.Bottom);
