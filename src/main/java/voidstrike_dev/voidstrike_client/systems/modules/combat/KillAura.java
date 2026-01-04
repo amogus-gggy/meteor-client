@@ -14,6 +14,7 @@ import voidstrike_dev.voidstrike_client.systems.friends.Friends;
 import voidstrike_dev.voidstrike_client.systems.modules.Categories;
 import voidstrike_dev.voidstrike_client.systems.modules.Module;
 import voidstrike_dev.voidstrike_client.systems.modules.Modules;
+import voidstrike_dev.voidstrike_client.systems.modules.movement.Sprint;
 import voidstrike_dev.voidstrike_client.utils.entity.EntityUtils;
 import voidstrike_dev.voidstrike_client.utils.entity.SortPriority;
 import voidstrike_dev.voidstrike_client.utils.entity.Target;
@@ -35,6 +36,7 @@ import net.minecraft.entity.passive.AnimalEntity;
 import net.minecraft.entity.passive.WolfEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.*;
+import net.minecraft.network.packet.c2s.play.ClientCommandC2SPacket;
 import net.minecraft.network.packet.c2s.play.UpdateSelectedSlotC2SPacket;
 import net.minecraft.registry.tag.ItemTags;
 import net.minecraft.util.Hand;
@@ -44,12 +46,14 @@ import net.minecraft.world.GameMode;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 
 public class KillAura extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgTargeting = settings.createGroup("Targeting");
     private final SettingGroup sgTiming = settings.createGroup("Timing");
+    private final SettingGroup sgGrimBypass = settings.createGroup("Grim Bypass");
 
     // General
 
@@ -72,7 +76,7 @@ public class KillAura extends Module {
     private final Setting<RotationMode> rotation = sgGeneral.add(new EnumSetting.Builder<RotationMode>()
         .name("rotate")
         .description("Determines when you should rotate towards the target.")
-        .defaultValue(RotationMode.Always)
+        .defaultValue(RotationMode.Aimbot)
         .build()
     );
 
@@ -117,6 +121,13 @@ public class KillAura extends Module {
         .name("pause-baritone")
         .description("Freezes Baritone temporarily until you are finished attacking the entity.")
         .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> legitSprintReset = sgGeneral.add(new BoolSetting.Builder()
+        .name("legit-sprint-reset")
+        .description("Resets sprinting after attacking for legit gameplay.")
+        .defaultValue(false)
         .build()
     );
 
@@ -249,12 +260,58 @@ public class KillAura extends Module {
         .build()
     );
 
+    // Grim Bypass (simplified - only essential settings)
+
+    private final Setting<Boolean> grimBypass = sgGrimBypass.add(new BoolSetting.Builder()
+        .name("grim-bypass")
+        .description("Enable basic anti-cheat bypass.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Double> aimbotSpeed = sgGrimBypass.add(new DoubleSetting.Builder()
+        .name("aimbot-speed")
+        .description("Ticks needed for a 360 degree turn.")
+        .defaultValue(3.0)
+        .min(1.0)
+        .sliderMax(20.0)
+        .visible(() -> rotation.get() == RotationMode.Aimbot)
+        .build()
+    );
+
+    private final Setting<Boolean> randomDelay = sgGrimBypass.add(new BoolSetting.Builder()
+        .name("random-delay")
+        .description("Add small random delays to look more legit.")
+        .defaultValue(true)
+        .visible(grimBypass::get)
+        .build()
+    );
+
+    private final Setting<Boolean> hitboxCheck = sgGrimBypass.add(new BoolSetting.Builder()
+        .name("hitbox-check")
+        .description("Validate target hitboxes before attacking.")
+        .defaultValue(true)
+        .visible(grimBypass::get)
+        .build()
+    );
+
+    private final Setting<Boolean> reachCheck = sgGrimBypass.add(new BoolSetting.Builder()
+        .name("reach-check")
+        .description("Validate attack reach before attacking.")
+        .defaultValue(true)
+        .visible(grimBypass::get)
+        .build()
+    );
+
     private final static ArrayList<Item> FILTER = new ArrayList<>(List.of(Items.DIAMOND_SWORD, Items.DIAMOND_AXE, Items.DIAMOND_PICKAXE, Items.DIAMOND_SHOVEL, Items.DIAMOND_HOE, Items.MACE, Items.DIAMOND_SPEAR, Items.TRIDENT));
     private final List<Entity> targets = new ArrayList<>();
     private int switchTimer, hitTimer;
     private boolean wasPathing = false;
     public boolean attacking, swapped;
     public static int previousSlot;
+    private final Random random = new Random();
+    private boolean wasSprinting = false;
+    private long lastAttackTime = 0;
 
     public KillAura() {
         super(Categories.Combat, "kill-aura", "Attacks specified entities around you.");
@@ -264,6 +321,8 @@ public class KillAura extends Module {
     public void onActivate() {
         previousSlot = -1;
         swapped = false;
+        wasSprinting = false;
+        lastAttackTime = 0;
     }
 
     @Override
@@ -339,13 +398,29 @@ public class KillAura extends Module {
         }
 
         attacking = true;
-        if (rotation.get() == RotationMode.Always) Rotations.rotate(Rotations.getYaw(primary), Rotations.getPitch(primary, Target.Body));
+
+        // Handle different rotation modes
+        if (rotation.get() == RotationMode.Always) {
+            Rotations.rotate(Rotations.getYaw(primary), Rotations.getPitch(primary, Target.Body));
+        } else if (rotation.get() == RotationMode.Aimbot) {
+            aimbotRotate(primary);
+        }
+
         if (pauseOnCombat.get() && PathManagers.get().isPathing() && !wasPathing) {
             PathManagers.get().pause();
             wasPathing = true;
         }
 
-        if (delayCheck()) targets.forEach(this::attack);
+        if (delayCheck()) {
+            if (rotation.get() == RotationMode.Aimbot) {
+                // For aimbot mode, only attack when looking at target
+                if (isLookingAtTarget(primary)) {
+                    targets.forEach(this::aimbotAttack);
+                }
+            } else {
+                targets.forEach(this::attack);
+            }
+        }
     }
 
     @EventHandler
@@ -393,6 +468,11 @@ public class KillAura extends Module {
             range.get()
         )) return false;
 
+        // Additional hitbox validation for grim bypass
+        if (grimBypass.get() && hitboxCheck.get()) {
+            if (!isValidHitbox(entity, hitbox)) return false;
+        }
+
         if (!entities.get().contains(entity.getType())) return false;
         if (ignoreNamed.get() && entity.hasCustomName()) return false;
         if (!PlayerUtils.canSeeEntity(entity) && !PlayerUtils.isWithin(entity, wallsRange.get())) return false;
@@ -432,6 +512,16 @@ public class KillAura extends Module {
         float delay = (customDelay.get()) ? hitDelay.get() : 0.5f;
         if (tpsSync.get()) delay /= (TickRate.INSTANCE.getTickRate() / 20);
 
+        // Add simple randomization if enabled
+        if (grimBypass.get() && randomDelay.get() && customDelay.get()) {
+            int variation = random.nextInt(3) + 1; // 1-3 ticks variation
+            if (random.nextBoolean()) {
+                delay += variation;
+            } else {
+                delay = Math.max(0, delay - variation);
+            }
+        }
+
         if (customDelay.get()) {
             if (hitTimer < delay) {
                 hitTimer++;
@@ -441,12 +531,158 @@ public class KillAura extends Module {
     }
 
     private void attack(Entity target) {
-        if (rotation.get() == RotationMode.OnHit) Rotations.rotate(Rotations.getYaw(target), Rotations.getPitch(target, Target.Body));
+        // Simple attack for non-aimbot modes
+        if (rotation.get() == RotationMode.OnHit) {
+            Rotations.rotate(Rotations.getYaw(target), Rotations.getPitch(target, Target.Body));
+        }
+
+        // Basic legit sprint reset if enabled
+        if (legitSprintReset.get() && mc.player.isSprinting()) {
+            mc.player.setSprinting(false);
+        }
+
+        // Simple delay if enabled
+        if (randomDelay.get() && grimBypass.get()) {
+            try {
+                Thread.sleep(5 + random.nextInt(10)); // 5-15ms delay
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
 
         mc.interactionManager.attackEntity(mc.player, target);
         mc.player.swingHand(Hand.MAIN_HAND);
 
+        lastAttackTime = System.currentTimeMillis();
         hitTimer = 0;
+    }
+
+    private void aimbotRotate(Entity target) {
+        double targetYaw = Rotations.getYaw(target);
+        double targetPitch = Rotations.getPitch(target, Target.Body);
+        double currentYaw = mc.player.getYaw();
+        double currentPitch = mc.player.getPitch();
+
+        double yawDiff = MathHelper.wrapDegrees(targetYaw - currentYaw);
+        double pitchDiff = MathHelper.wrapDegrees(targetPitch - currentPitch);
+
+        // Calculate total rotation needed
+        double totalRotation = Math.sqrt(yawDiff * yawDiff + pitchDiff * pitchDiff);
+        
+        // Calculate rotation per tick (360 degrees = aimbotSpeed ticks)
+        double degreesPerTick = 360.0 / aimbotSpeed.get();
+        
+        // Calculate how much we can rotate this tick
+        double rotationThisTick = Math.min(totalRotation, degreesPerTick);
+        
+        // Calculate the ratio of movement
+        if (totalRotation > 0) {
+            double yawRatio = Math.abs(yawDiff) / totalRotation;
+            double pitchRatio = Math.abs(pitchDiff) / totalRotation;
+            
+            // Apply rotation based on ratios
+            double yawChange = Math.signum(yawDiff) * rotationThisTick * yawRatio;
+            double pitchChange = Math.signum(pitchDiff) * rotationThisTick * pitchRatio;
+            
+            // Apply new rotation
+            double newYaw = currentYaw + yawChange;
+            double newPitch = currentPitch + pitchChange;
+            
+            // Clamp to prevent overshooting
+            if (Math.abs(yawChange) > Math.abs(yawDiff)) {
+                newYaw = targetYaw;
+            }
+            if (Math.abs(pitchChange) > Math.abs(pitchDiff)) {
+                newPitch = targetPitch;
+            }
+            
+            mc.player.setYaw((float) newYaw);
+            mc.player.setPitch((float) newPitch);
+        }
+    }
+
+    private boolean isLookingAtTarget(Entity target) {
+        // Check if player is looking at the target within a reasonable angle
+        double yaw = mc.player.getYaw();
+        double pitch = mc.player.getPitch();
+        double targetYaw = Rotations.getYaw(target);
+        double targetPitch = Rotations.getPitch(target, Target.Body);
+
+        double yawDiff = Math.abs(MathHelper.wrapDegrees(targetYaw - yaw));
+        double pitchDiff = Math.abs(MathHelper.wrapDegrees(targetPitch - pitch));
+
+        // Much larger tolerance for more responsive attacks
+        return yawDiff < 15.0 && pitchDiff < 15.0;
+    }
+
+    private void aimbotAttack(Entity target) {
+        // Minimal delay for responsive aimbot
+        if (randomDelay.get() && grimBypass.get()) {
+            try {
+                Thread.sleep(2 + random.nextInt(3)); // Only 2-5ms delay
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        // Direct attack without complex logic
+        mc.interactionManager.attackEntity(mc.player, target);
+        mc.player.swingHand(Hand.MAIN_HAND);
+
+        lastAttackTime = System.currentTimeMillis();
+        hitTimer = 0;
+    }
+
+    private boolean isValidHitbox(Entity entity, Box hitbox) {
+        // Check if hitbox is too small or too large (potential anti-cheat flags)
+        double hitboxVolume = (hitbox.maxX - hitbox.minX) * (hitbox.maxY - hitbox.minY) * (hitbox.maxZ - hitbox.minZ);
+        
+        // Minimum volume check (prevent attacking entities with tiny hitboxes)
+        if (hitboxVolume < 0.1) return false;
+        
+        // Maximum volume check (prevent attacking entities with oversized hitboxes)
+        if (hitboxVolume > 8.0) return false;
+        
+        // Check for unusual hitbox dimensions
+        double width = Math.max(hitbox.maxX - hitbox.minX, hitbox.maxZ - hitbox.minZ);
+        double height = hitbox.maxY - hitbox.minY;
+        
+        // Validate aspect ratio (prevent extremely flat or tall hitboxes)
+        if (width > 0 && height > 0) {
+            double ratio = height / width;
+            if (ratio < 0.1 || ratio > 10.0) return false;
+        }
+        
+        // Check if hitbox is within reasonable distance from entity position
+        double entityCenterX = entity.getX();
+        double entityCenterY = entity.getY();
+        double entityCenterZ = entity.getZ();
+        double hitboxCenterX = (hitbox.minX + hitbox.maxX) / 2.0;
+        double hitboxCenterY = (hitbox.minY + hitbox.maxY) / 2.0;
+        double hitboxCenterZ = (hitbox.minZ + hitbox.maxZ) / 2.0;
+        
+        double centerDistance = Math.sqrt(
+            Math.pow(entityCenterX - hitboxCenterX, 2) +
+            Math.pow(entityCenterY - hitboxCenterY, 2) +
+            Math.pow(entityCenterZ - hitboxCenterZ, 2)
+        );
+        
+        // Hitbox center should be close to entity position
+        if (centerDistance > 2.0) return false;
+        
+        return true;
+    }
+
+    private boolean isWithinReach(Entity target) {
+        if (!grimBypass.get() || !reachCheck.get()) return true;
+        
+        double distance = mc.player.distanceTo(target);
+        double maxReach = range.get();
+        
+        // Add small buffer for legitimate reach variations
+        double buffer = 0.1;
+        
+        return distance <= (maxReach + buffer);
     }
 
     private boolean acceptableWeapon(ItemStack stack) {
@@ -482,6 +718,7 @@ public class KillAura extends Module {
     public enum RotationMode {
         Always,
         OnHit,
+        Aimbot,
         None
     }
 
