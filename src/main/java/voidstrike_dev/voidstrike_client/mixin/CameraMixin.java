@@ -8,6 +8,7 @@ package voidstrike_dev.voidstrike_client.mixin;
 import com.llamalad7.mixinextras.sugar.Local;
 import voidstrike_dev.voidstrike_client.mixininterface.ICamera;
 import voidstrike_dev.voidstrike_client.systems.modules.Modules;
+import voidstrike_dev.voidstrike_client.systems.modules.combat.KillAura2;
 import voidstrike_dev.voidstrike_client.systems.modules.render.CameraTweaks;
 import voidstrike_dev.voidstrike_client.systems.modules.render.FreeLook;
 import voidstrike_dev.voidstrike_client.systems.modules.render.Freecam;
@@ -79,6 +80,7 @@ public abstract class CameraMixin implements ICamera {
     private void onUpdateSetRotationArgs(Args args, @Local(argsOnly = true) float tickDelta) {
         Freecam freecam = Modules.get().get(Freecam.class);
         FreeLook freeLook = Modules.get().get(FreeLook.class);
+        KillAura2 killAura2 = Modules.get().get(KillAura2.class);
 
         if (freecam.isActive()) {
             args.set(0, (float) freecam.getYaw(tickDelta));
@@ -91,6 +93,12 @@ public abstract class CameraMixin implements ICamera {
         else if (freeLook.isActive()) {
             args.set(0, freeLook.cameraYaw);
             args.set(1, freeLook.cameraPitch);
+        }
+        else if (killAura2.isActive() && killAura2.attacking && killAura2.isCameraDecoupled()) {
+            // When KillAura2 is attacking and camera decouple is enabled,
+            // camera follows user mouse input while head auto-aims at target
+            args.set(0, killAura2.getUserCameraYaw());
+            args.set(1, killAura2.getUserCameraPitch());
         }
     }
 
