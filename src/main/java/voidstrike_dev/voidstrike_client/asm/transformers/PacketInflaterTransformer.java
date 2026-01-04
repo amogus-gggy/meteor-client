@@ -42,7 +42,7 @@ public class PacketInflaterTransformer extends AsmTransformer {
                 if (newCount == 2) {
                     InsnList list = new InsnList();
 
-                    list.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "voidstrike_dev/voidstrike_client/systems/modules/Modules", "get", "()Lmeteordevelopment/voidstrike_client/systems/modules/Modules;", false));
+                    list.add(new MethodInsnNode(Opcodes.INVOKESTATIC, "voidstrike_dev/voidstrike_client/systems/modules/Modules", "get", "()Lvoidstrike_dev/voidstrike_client/systems/modules/Modules;", false));
                     list.add(new LdcInsnNode(Type.getType(AntiPacketKick.class)));
                     list.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "voidstrike_dev/voidstrike_client/systems/modules/Modules", "isActive", "(Ljava/lang/Class;)Z", false));
 
