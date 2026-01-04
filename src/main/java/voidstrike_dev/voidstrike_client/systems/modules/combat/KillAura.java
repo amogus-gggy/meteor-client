@@ -42,6 +42,9 @@ import net.minecraft.registry.tag.ItemTags;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
+import voidstrike_dev.voidstrike_client.mixin.KeyBindingAccessor;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.GameMode;
 
 import java.util.ArrayList;
@@ -411,13 +414,10 @@ public class KillAura extends Module {
             wasPathing = true;
         }
 
-        if (delayCheck()) {
-            if (rotation.get() == RotationMode.Aimbot) {
-                // For aimbot mode, only attack when looking at target
-                if (isLookingAtTarget(primary)) {
-                    targets.forEach(this::aimbotAttack);
-                }
-            } else {
+        // Simple attack with cooldown check
+        if (primary != null && !targets.isEmpty()) {
+            // Check attack cooldown (1.0 = ready, 0.0 = just attacked)
+            if (mc.player.getAttackCooldownProgress(0.5f) >= 1.0) {
                 targets.forEach(this::attack);
             }
         }
@@ -531,28 +531,10 @@ public class KillAura extends Module {
     }
 
     private void attack(Entity target) {
-        // Simple attack for non-aimbot modes
-        if (rotation.get() == RotationMode.OnHit) {
-            Rotations.rotate(Rotations.getYaw(target), Rotations.getPitch(target, Target.Body));
-        }
-
-        // Basic legit sprint reset if enabled
-        if (legitSprintReset.get() && mc.player.isSprinting()) {
-            mc.player.setSprinting(false);
-        }
-
-        // Simple delay if enabled
-        if (randomDelay.get() && grimBypass.get()) {
-            try {
-                Thread.sleep(5 + random.nextInt(10)); // 5-15ms delay
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-
-        mc.interactionManager.attackEntity(mc.player, target);
-        mc.player.swingHand(Hand.MAIN_HAND);
-
+        // Simulate mouse click using the same method as InputCommand
+        KeyBindingAccessor accessor = (KeyBindingAccessor) mc.options.attackKey;
+        accessor.meteor$setTimesPressed(accessor.meteor$getTimesPressed() + 1);
+        
         lastAttackTime = System.currentTimeMillis();
         hitTimer = 0;
     }
@@ -616,18 +598,9 @@ public class KillAura extends Module {
     }
 
     private void aimbotAttack(Entity target) {
-        // Minimal delay for responsive aimbot
-        if (randomDelay.get() && grimBypass.get()) {
-            try {
-                Thread.sleep(2 + random.nextInt(3)); // Only 2-5ms delay
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-
-        // Direct attack without complex logic
-        mc.interactionManager.attackEntity(mc.player, target);
-        mc.player.swingHand(Hand.MAIN_HAND);
+        // Simple attack - just click if looking at target and in range
+        mc.options.attackKey.setPressed(true);
+        mc.options.attackKey.setPressed(false);
 
         lastAttackTime = System.currentTimeMillis();
         hitTimer = 0;
@@ -670,19 +643,44 @@ public class KillAura extends Module {
         // Hitbox center should be close to entity position
         if (centerDistance > 2.0) return false;
         
+        // Additional strict validation: check if hitbox extends too far from entity
+        double maxExtentX = Math.max(Math.abs(hitbox.minX - entityCenterX), Math.abs(hitbox.maxX - entityCenterX));
+        double maxExtentY = Math.max(Math.abs(hitbox.minY - entityCenterY), Math.abs(hitbox.maxY - entityCenterY));
+        double maxExtentZ = Math.max(Math.abs(hitbox.minZ - entityCenterZ), Math.abs(hitbox.maxZ - entityCenterZ));
+        
+        // For players, hitbox should not extend more than 1 block from center in any direction
+        if (entity instanceof PlayerEntity) {
+            if (maxExtentX > 1.0 || maxExtentY > 2.0 || maxExtentZ > 1.0) return false;
+        }
+        
         return true;
     }
 
     private boolean isWithinReach(Entity target) {
         if (!grimBypass.get() || !reachCheck.get()) return true;
         
-        double distance = mc.player.distanceTo(target);
-        double maxReach = range.get();
+        // Get actual attack distance from player's eyes to center of target's hitbox
+        Vec3d eyePos = new Vec3d(mc.player.getX(), mc.player.getEyeY(), mc.player.getZ());
+        Box targetBox = target.getBoundingBox();
         
-        // Add small buffer for legitimate reach variations
-        double buffer = 0.1;
+        // Calculate center of hitbox
+        double centerX = (targetBox.minX + targetBox.maxX) / 2.0;
+        double centerY = (targetBox.minY + targetBox.maxY) / 2.0;
+        double centerZ = (targetBox.minZ + targetBox.maxZ) / 2.0;
         
-        return distance <= (maxReach + buffer);
+        // Calculate distance to center of hitbox
+        double distance = Math.sqrt(
+            Math.pow(eyePos.x - centerX, 2) +
+            Math.pow(eyePos.y - centerY, 2) +
+            Math.pow(eyePos.z - centerZ, 2)
+        );
+        
+        // Use vanilla entity interaction range as base (3.0 for survival, varies with effects)
+        double baseReach = mc.player.getEntityInteractionRange();
+        double maxReach = Math.min(range.get(), baseReach);
+        
+        // No buffer - strict validation to center of hitbox
+        return distance <= maxReach;
     }
 
     private boolean acceptableWeapon(ItemStack stack) {
