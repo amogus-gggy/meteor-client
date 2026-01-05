@@ -14,6 +14,7 @@ import voidstrike_dev.voidstrike_client.systems.friends.Friends;
 import voidstrike_dev.voidstrike_client.systems.modules.Categories;
 import voidstrike_dev.voidstrike_client.systems.modules.Module;
 import voidstrike_dev.voidstrike_client.systems.modules.Modules;
+import voidstrike_dev.voidstrike_client.systems.modules.combat.CrystalAura;
 import voidstrike_dev.voidstrike_client.systems.modules.movement.Sprint;
 import voidstrike_dev.voidstrike_client.utils.entity.EntityUtils;
 import voidstrike_dev.voidstrike_client.utils.entity.SortPriority;
@@ -47,6 +48,7 @@ import net.minecraft.client.option.KeyBinding;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.GameMode;
 
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -58,7 +60,7 @@ public class KillAura extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgTargeting = settings.createGroup("Targeting");
     private final SettingGroup sgTiming = settings.createGroup("Timing");
-    private final SettingGroup sgGrimBypass = settings.createGroup("Grim Bypass");
+    private final SettingGroup sgMakima = settings.createGroup("Makima Settings");
 
     // General
 
@@ -81,7 +83,7 @@ public class KillAura extends Module {
     private final Setting<RotationMode> rotation = sgGeneral.add(new EnumSetting.Builder<RotationMode>()
         .name("rotate")
         .description("Determines when you should rotate towards the target.")
-        .defaultValue(RotationMode.Aimbot)
+        .defaultValue(RotationMode.MakimaAngle)
         .build()
     );
 
@@ -172,12 +174,35 @@ public class KillAura extends Module {
         .build()
     );
 
+    private final Setting<Double> targetRange = sgTargeting.add(new DoubleSetting.Builder()
+        .name("target-range")
+        .description("The maximum range to keep targets locked (even if not attackable).")
+        .defaultValue(6.0)
+        .min(0)
+        .sliderMax(12)
+        .build()
+    );
+
     private final Setting<Double> wallsRange = sgTargeting.add(new DoubleSetting.Builder()
         .name("walls-range")
         .description("The maximum range the entity can be attacked through walls.")
         .defaultValue(3.5)
         .min(0)
         .sliderMax(6)
+        .build()
+    );
+
+    private final Setting<Boolean> hitThroughWalls = sgTargeting.add(new BoolSetting.Builder()
+        .name("hit-through-walls")
+        .description("Allow attacking entities through walls regardless of line of sight.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> packetAttackThroughWalls = sgTargeting.add(new BoolSetting.Builder()
+        .name("packet-attack-through-walls")
+        .description("Use packet attacks to bypass wall checks when aiming at head.")
+        .defaultValue(true)
         .build()
     );
 
@@ -265,46 +290,57 @@ public class KillAura extends Module {
         .build()
     );
 
-    // Grim Bypass (simplified - only essential settings)
+    // Makima Settings
 
-    private final Setting<Boolean> grimBypass = sgGrimBypass.add(new BoolSetting.Builder()
-        .name("grim-bypass")
-        .description("Enable basic anti-cheat bypass.")
-        .defaultValue(true)
+    private final Setting<Double> rotationSpeed = sgMakima.add(new DoubleSetting.Builder()
+        .name("rotation-speed")
+        .description("Base rotation speed multiplier.")
+        .defaultValue(1.0)
+        .min(0.1)
+        .sliderMax(3.0)
+        .visible(() -> rotation.get() == RotationMode.MakimaAngle)
         .build()
     );
 
-    private final Setting<Double> aimbotSpeed = sgGrimBypass.add(new DoubleSetting.Builder()
-        .name("aimbot-speed")
-        .description("Ticks needed for a 360 degree turn.")
-        .defaultValue(3.0)
-        .min(1.0)
-        .sliderMax(20.0)
-        .visible(() -> rotation.get() == RotationMode.Aimbot)
+    private final Setting<Boolean> enableJitter = sgMakima.add(new BoolSetting.Builder()
+        .name("enable-jitter")
+        .description("Enable realistic jitter when looking at target.")
+        .defaultValue(true)
+        .visible(() -> rotation.get() == RotationMode.MakimaAngle)
         .build()
     );
 
-    private final Setting<Boolean> randomDelay = sgGrimBypass.add(new BoolSetting.Builder()
-        .name("random-delay")
-        .description("Add small random delays to look more legit.")
-        .defaultValue(true)
-        .visible(grimBypass::get)
+    private final Setting<Double> jitterStrength = sgMakima.add(new DoubleSetting.Builder()
+        .name("jitter-strength")
+        .description("Strength of the jitter effect.")
+        .defaultValue(1.0)
+        .min(0.1)
+        .sliderMax(5.0)
+        .visible(() -> enableJitter.get() && rotation.get() == RotationMode.MakimaAngle)
         .build()
     );
 
-    private final Setting<Boolean> hitboxCheck = sgGrimBypass.add(new BoolSetting.Builder()
-        .name("hitbox-check")
-        .description("Validate target hitboxes before attacking.")
+    private final Setting<Boolean> randomizeSpeed = sgMakima.add(new BoolSetting.Builder()
+        .name("randomize-speed")
+        .description("Add randomization to rotation speed.")
         .defaultValue(true)
-        .visible(grimBypass::get)
+        .visible(() -> rotation.get() == RotationMode.MakimaAngle)
         .build()
     );
 
-    private final Setting<Boolean> reachCheck = sgGrimBypass.add(new BoolSetting.Builder()
-        .name("reach-check")
-        .description("Validate attack reach before attacking.")
+    private final Setting<Boolean> gcdFix = sgMakima.add(new BoolSetting.Builder()
+        .name("gcd-fix")
+        .description("Apply GCD fix to rotations.")
         .defaultValue(true)
-        .visible(grimBypass::get)
+        .visible(() -> rotation.get() == RotationMode.MakimaAngle)
+        .build()
+    );
+
+    private final Setting<Boolean> cameraDecouple = sgMakima.add(new BoolSetting.Builder()
+        .name("camera-decouple")
+        .description("Decouple camera movement from head movement. Head auto-aims, camera user-controlled.")
+        .defaultValue(true)
+        .visible(() -> rotation.get() == RotationMode.MakimaAngle)
         .build()
     );
 
@@ -318,19 +354,18 @@ public class KillAura extends Module {
     private boolean wasSprinting = false;
     private long lastAttackTime = 0;
 
-    // DVD screensaver style movement variables
-    private double dvdX = 1.0;
-    private double dvdY = 1.0;
-    private double dvdZ = 1.0;
-    private double dvdSpeed = 0.5;
+    // MakimaAngle rotation system
+    private static final SecureRandom secureRandom = new SecureRandom();
+    private Vec3d currentRotation = Vec3d.ZERO;
+    private Vec3d targetRotation = Vec3d.ZERO;
 
-    // DVD movement state variables
-    private Vec3d rotationPoint = Vec3d.ZERO;
-    private Vec3d rotationMotion = Vec3d.ZERO;
-    private Vec3d smoothTargetPoint = Vec3d.ZERO; // Плавная целевая точка
+    // User camera control system
+    private float userCameraYaw;
+    private float userCameraPitch;
+    private boolean lastAttackingState = false;
 
     public KillAura() {
-        super(Categories.Combat, "kill-aura", "Attacks specified entities around you.");
+        super(Categories.Combat, "kill aura", "Enhanced KillAura with MakimaAngle rotation system.");
     }
 
     @Override
@@ -339,18 +374,29 @@ public class KillAura extends Module {
         swapped = false;
         wasSprinting = false;
         lastAttackTime = 0;
-        
-        // Полная переинициализация KillAura
         targets.clear();
-        rotationPoint = Vec3d.ZERO;
-        rotationMotion = Vec3d.ZERO;
-        smoothTargetPoint = Vec3d.ZERO;
+        currentRotation = Vec3d.ZERO;
+        targetRotation = Vec3d.ZERO;
+
+        // Initialize user camera angles
+        userCameraYaw = mc.player.getYaw();
+        userCameraPitch = mc.player.getPitch();
+        lastAttackingState = false;
     }
 
     @Override
     public void onDeactivate() {
         targets.clear();
         stopAttacking();
+    }
+
+    @EventHandler
+    private void onTickPost(TickEvent.Post event) {
+        // Update user camera angles when not attacking
+        if (!attacking && isCameraDecoupled()) {
+            userCameraYaw = mc.player.getYaw();
+            userCameraPitch = mc.player.getPitch();
+        }
     }
 
     @EventHandler
@@ -421,11 +467,20 @@ public class KillAura extends Module {
 
         attacking = true;
 
+        // Track user camera angles when just started attacking
+        if (attacking && !lastAttackingState && isCameraDecoupled()) {
+            // Just started attacking - capture current player rotation as user camera angles
+            userCameraYaw = mc.player.getYaw();
+            userCameraPitch = mc.player.getPitch();
+        }
+
+        lastAttackingState = attacking;
+
         // Handle different rotation modes
         if (rotation.get() == RotationMode.Always) {
             Rotations.rotate(Rotations.getYaw(primary), Rotations.getPitch(primary, Target.Body));
-        } else if (rotation.get() == RotationMode.Aimbot) {
-            aimbotRotate(primary);
+        } else if (rotation.get() == RotationMode.MakimaAngle) {
+            makimaAngleRotate(primary);
         }
 
         if (pauseOnCombat.get() && PathManagers.get().isPathing() && !wasPathing) {
@@ -433,11 +488,12 @@ public class KillAura extends Module {
             wasPathing = true;
         }
 
-        // Simple attack with cooldown check
+        // Attack with MakimaAngle logic
         if (primary != null && !targets.isEmpty()) {
-            // Check attack cooldown (1.0 = ready, 0.0 = just attacked)
-            if (mc.player.getAttackCooldownProgress(0.5f) >= 1.0) {
-                targets.forEach(this::attack);
+            if (canAttack(primary, 180) || !getAttackTimer().finished(150)) {
+                if (mc.player.getAttackCooldownProgress(0.5f) >= 1.0 && isEntityHittable(primary)) {
+                    targets.forEach(this::attack);
+                }
             }
         }
     }
@@ -479,22 +535,30 @@ public class KillAura extends Module {
         if (entity.equals(mc.player) || entity.equals(mc.getCameraEntity())) return false;
         if ((entity instanceof LivingEntity livingEntity && livingEntity.isDead()) || !entity.isAlive()) return false;
 
-        Box hitbox = entity.getBoundingBox();
+        // Check if entity is within target range (for keeping target locked)
+        Box targetHitbox = entity.getBoundingBox();
         if (!PlayerUtils.isWithin(
-            MathHelper.clamp(mc.player.getX(), hitbox.minX, hitbox.maxX),
-            MathHelper.clamp(mc.player.getY(), hitbox.minY, hitbox.maxY),
-            MathHelper.clamp(mc.player.getZ(), hitbox.minZ, hitbox.maxZ),
-            range.get()
+            MathHelper.clamp(mc.player.getX(), targetHitbox.minX, targetHitbox.maxX),
+            MathHelper.clamp(mc.player.getY(), targetHitbox.minY, targetHitbox.maxY),
+            MathHelper.clamp(mc.player.getZ(), targetHitbox.minZ, targetHitbox.maxZ),
+            targetRange.get()
         )) return false;
 
-        // Additional hitbox validation for grim bypass
-        if (grimBypass.get() && hitboxCheck.get()) {
-            if (!isValidHitbox(entity, hitbox)) return false;
-        }
+        // Check if entity is within attack range (for actual attacking)
+        Box attackHitbox = entity.getBoundingBox();
+        boolean inAttackRange = PlayerUtils.isWithin(
+            MathHelper.clamp(mc.player.getX(), attackHitbox.minX, attackHitbox.maxX),
+            MathHelper.clamp(mc.player.getY(), attackHitbox.minY, attackHitbox.maxY),
+            MathHelper.clamp(mc.player.getZ(), attackHitbox.minZ, attackHitbox.maxZ),
+            range.get()
+        );
 
         if (!entities.get().contains(entity.getType())) return false;
         if (ignoreNamed.get() && entity.hasCustomName()) return false;
-        if (!PlayerUtils.canSeeEntity(entity) && !PlayerUtils.isWithin(entity, wallsRange.get())) return false;
+
+        // Wall check - only apply if entity is in attack range
+        if (inAttackRange && !PlayerUtils.canSeeEntity(entity) && !PlayerUtils.isWithin(entity, wallsRange.get()) && !hitThroughWalls.get()) return false;
+
         if (ignoreTamed.get()) {
             if (entity instanceof Tameable tameable
                 && tameable.getOwner() != null
@@ -531,16 +595,6 @@ public class KillAura extends Module {
         float delay = (customDelay.get()) ? hitDelay.get() : 0.5f;
         if (tpsSync.get()) delay /= (TickRate.INSTANCE.getTickRate() / 20);
 
-        // Add simple randomization if enabled
-        if (grimBypass.get() && randomDelay.get() && customDelay.get()) {
-            int variation = random.nextInt(3) + 1; // 1-3 ticks variation
-            if (random.nextBoolean()) {
-                delay += variation;
-            } else {
-                delay = Math.max(0, delay - variation);
-            }
-        }
-
         if (customDelay.get()) {
             if (hitTimer < delay) {
                 hitTimer++;
@@ -550,209 +604,173 @@ public class KillAura extends Module {
     }
 
     private void attack(Entity target) {
-        // Simulate mouse click using the same method as InputCommand
-        KeyBindingAccessor accessor = (KeyBindingAccessor) mc.options.attackKey;
-        accessor.meteor$setTimesPressed(accessor.meteor$getTimesPressed() + 1);
+        // Check if we should use packet attack for wall bypass
+        boolean shouldUsePacketAttack = packetAttackThroughWalls.get() &&
+                                       !PlayerUtils.canSeeEntity(target) &&
+                                       PlayerUtils.isWithin(target, range.get());
+
+        if (shouldUsePacketAttack) {
+            // Direct packet attack to bypass wall checks
+            mc.interactionManager.attackEntity(mc.player, target);
+            mc.player.swingHand(Hand.MAIN_HAND);
+        } else {
+            // Simulate mouse click using the same method as InputCommand
+            KeyBindingAccessor accessor = (KeyBindingAccessor) mc.options.attackKey;
+            accessor.meteor$setTimesPressed(accessor.meteor$getTimesPressed() + 1);
+        }
 
         lastAttackTime = System.currentTimeMillis();
         hitTimer = 0;
     }
 
-    private void aimbotRotate(Entity target) {
-        Box hitbox = target.getBoundingBox();
-        
-        // DVD Logo style movement - точка движется внутри хитбокса и отталкивается от стенок
-        double lenghtX = hitbox.getLengthX();
-        double lenghtY = hitbox.getLengthY();
-        double lenghtZ = hitbox.getLengthZ();
-        
-        // Задаем начальную скорость точки
-        if (rotationMotion.equals(Vec3d.ZERO)) {
-            rotationMotion = new Vec3d(random(-0.05f, 0.05f), random(-0.05f, 0.05f), random(-0.05f, 0.05f));
-        }
-        
-        rotationPoint = rotationPoint.add(rotationMotion);
+    private void makimaAngleRotate(Entity entity) {
+        Vec3d targetPos = new Vec3d(entity.getX(), entity.getEyeY(), entity.getZ());
+        float[] targetAngles = PlayerUtils.calculateAngle(targetPos);
 
-        // Сталкиваемся с хитбоксом по X
-        if (rotationPoint.x >= (lenghtX - 0.025) / 2f) {
-            rotationMotion = new Vec3d(-random(0.003f, 0.03f), rotationMotion.getY(), rotationMotion.getZ());
-        }
-        if (rotationPoint.x <= -(lenghtX - 0.025) / 2f) {
-            rotationMotion = new Vec3d(random(0.003f, 0.03f), rotationMotion.getY(), rotationMotion.getZ());
-        }
+        Turns currentAngle = new Turns(mc.player.getYaw(), mc.player.getPitch());
+        Turns targetAngle = new Turns(targetAngles[0], targetAngles[1]);
 
-        // Сталкиваемся с хитбоксом по Y
-        if (rotationPoint.y >= (lenghtY - 0.025) / 2f) {
-            rotationMotion = new Vec3d(rotationMotion.getX(), -random(0.001f, 0.03f), rotationMotion.getZ());
-        }
-        if (rotationPoint.y <= -(lenghtY - 0.025) / 2f) {
-            rotationMotion = new Vec3d(rotationMotion.getX(), random(0.001f, 0.03f), rotationMotion.getZ());
-        }
+        Turns newAngle = limitAngleChange(currentAngle, targetAngle, targetPos, entity);
 
-        // Сталкиваемся с хитбоксом по Z
-        if (rotationPoint.z >= (lenghtZ - 0.025) / 2f) {
-            rotationMotion = new Vec3d(rotationMotion.getX(), rotationMotion.getY(), -random(0.003f, 0.03f));
-        }
-        if (rotationPoint.z <= -(lenghtZ - 0.025) / 2f) {
-            rotationMotion = new Vec3d(rotationMotion.getX(), rotationMotion.getY(), random(0.003f, 0.03f));
-        }
-
-        // Добавляем джиттер
-        rotationPoint.add(random(-0.03f, 0.03f), 0f, random(-0.03f, 0.03f));
-
-        // Выбираем лучшую точку для атаки
-        double centerX = (hitbox.minX + hitbox.maxX) / 2.0;
-        double centerY = (hitbox.minY + hitbox.maxY) / 2.0;
-        double centerZ = (hitbox.minZ + hitbox.maxZ) / 2.0;
-        
-        Vec3d targetPoint = new Vec3d(centerX + rotationPoint.x, centerY + rotationPoint.y, centerZ + rotationPoint.z);
-        
-        // Наведение за один тик без плавности
-        float[] rotation = PlayerUtils.calculateAngle(targetPoint);
-        double targetYaw = rotation[0];
-        double targetPitch = rotation[1];
-        
-        double currentYaw = mc.player.getYaw();
-        double currentPitch = mc.player.getPitch();
-
-        // Используем wrapDegrees для правильного расчета разницы
-        double yawDiff = MathHelper.wrapDegrees(targetYaw - currentYaw);
-        double pitchDiff = MathHelper.wrapDegrees(targetPitch - currentPitch);
-
-        // Calculate total rotation needed
-        double totalRotation = Math.sqrt(yawDiff * yawDiff + pitchDiff * pitchDiff);
-        
-        // Calculate rotation per tick (360 degrees = aimbotSpeed ticks)
-        double degreesPerTick = 360.0 / aimbotSpeed.get();
-        
-        // Calculate how much we can rotate this tick
-        double rotationThisTick = Math.min(totalRotation, degreesPerTick);
-        
-        // Calculate the ratio of movement
-        if (totalRotation > 0) {
-            double yawRatio = Math.abs(yawDiff) / totalRotation;
-            double pitchRatio = Math.abs(pitchDiff) / totalRotation;
-            
-            // Apply rotation based on ratios
-            double yawChange = Math.signum(yawDiff) * rotationThisTick * yawRatio;
-            double pitchChange = Math.signum(pitchDiff) * rotationThisTick * pitchRatio;
-            
-            // Apply new rotation
-            double newYaw = currentYaw + yawChange;
-            double newPitch = currentPitch + pitchChange;
-            
-            mc.player.setYaw((float) newYaw);
-            mc.player.setPitch((float) newPitch);
+        if (cameraDecouple.get()) {
+            // Auto-aim head only, camera stays user-controlled
+            mc.player.setYaw(newAngle.getYaw());
+            mc.player.setPitch(newAngle.getPitch());
+        } else {
+            // Normal mode - both head and camera move together
+            mc.player.setYaw(newAngle.getYaw());
+            mc.player.setPitch(newAngle.getPitch());
         }
     }
 
-    private boolean isLookingAtTarget(Entity target) {
-        // Check if player is looking at any part of the target's hitbox
-        Box hitbox = target.getBoundingBox();
+    private Turns limitAngleChange(Turns currentAngle, Turns targetAngle, Vec3d vec3d, Entity entity) {
+        Turns angleDelta = calculateDelta(currentAngle, targetAngle);
 
-        // Generate random point within hitbox for consistency with aimbot
-        double randomX = hitbox.minX + random.nextDouble() * (hitbox.maxX - hitbox.minX);
-        double randomY = hitbox.minY + random.nextDouble() * (hitbox.maxY - hitbox.minY);
-        double randomZ = hitbox.minZ + random.nextDouble() * (hitbox.maxZ - hitbox.minZ);
+        float yawDelta = angleDelta.getYaw();
+        float pitchDelta = angleDelta.getPitch();
 
-        Vec3d randomPoint = new Vec3d(randomX, randomY, randomZ);
+        float rotationDifference = (float) Math.hypot(Math.abs(yawDelta), Math.abs(pitchDelta));
+        boolean isLookingAtTarget = rotationDifference < 30.0f;
+        boolean canAttack = entity != null && canAttack(entity, 35);
 
-        double yaw = mc.player.getYaw();
-        double pitch = mc.player.getPitch();
-        double targetYaw = Rotations.getYaw(randomPoint);
-        double targetPitch = Rotations.getPitch(randomPoint);
-
-        double yawDiff = Math.abs(MathHelper.wrapDegrees(targetYaw - yaw));
-        double pitchDiff = Math.abs(MathHelper.wrapDegrees(targetPitch - pitch));
-
-        // Tolerance for looking at target
-        return yawDiff < 15.0 && pitchDiff < 15.0;
-    }
-
-    private void aimbotAttack(Entity target) {
-        // Simple attack - just click if looking at target and in range
-        mc.options.attackKey.setPressed(true);
-        mc.options.attackKey.setPressed(false);
-
-        lastAttackTime = System.currentTimeMillis();
-        hitTimer = 0;
-    }
-
-    private boolean isValidHitbox(Entity entity, Box hitbox) {
-        // Check if hitbox is too small or too large (potential anti-cheat flags)
-        double hitboxVolume = (hitbox.maxX - hitbox.minX) * (hitbox.maxY - hitbox.minY) * (hitbox.maxZ - hitbox.minZ);
-
-        // Minimum volume check (prevent attacking entities with tiny hitboxes)
-        if (hitboxVolume < 0.1) return false;
-
-        // Maximum volume check (prevent attacking entities with oversized hitboxes)
-        if (hitboxVolume > 8.0) return false;
-
-        // Check for unusual hitbox dimensions
-        double width = Math.max(hitbox.maxX - hitbox.minX, hitbox.maxZ - hitbox.minZ);
-        double height = hitbox.maxY - hitbox.minY;
-
-        // Validate aspect ratio (prevent extremely flat or tall hitboxes)
-        if (width > 0 && height > 0) {
-            double ratio = height / width;
-            if (ratio < 0.1 || ratio > 10.0) return false;
+        float speed;
+        if (!isLookingAtTarget) {
+            speed = randomLerp(0.95F, 1.0F);
+        } else {
+            float accuracyFactor = MathHelper.clamp(rotationDifference / 20.0f, 0.2f, 1.0f);
+            float baseSpeed = canAttack ? randomLerp(0.9F, 0.98F) : randomLerp(0.5F, 0.7F);
+            speed = baseSpeed * accuracyFactor;
         }
 
-        // Check if hitbox is within reasonable distance from entity position
-        double entityCenterX = entity.getX();
-        double entityCenterY = entity.getY();
-        double entityCenterZ = entity.getZ();
-        double hitboxCenterX = (hitbox.minX + hitbox.maxX) / 2.0;
-        double hitboxCenterY = (hitbox.minY + hitbox.maxY) / 2.0;
-        double hitboxCenterZ = (hitbox.minZ + hitbox.maxZ) / 2.0;
+        // Apply rotation speed multiplier
+        speed *= rotationSpeed.get().floatValue();
 
-        double centerDistance = Math.sqrt(
-            Math.pow(entityCenterX - hitboxCenterX, 2) +
-            Math.pow(entityCenterY - hitboxCenterY, 2) +
-            Math.pow(entityCenterZ - hitboxCenterZ, 2)
-        );
+        // Apply randomization if enabled
+        if (randomizeSpeed.get()) {
+            speed *= randomLerp(0.8F, 1.2F);
+        }
 
-        // Hitbox center should be close to entity position
-        if (centerDistance > 2.0) return false;
+        float div = (rotationDifference < 0.0001f) ? 0.0001f : rotationDifference;
+        float lineYaw = (Math.abs(yawDelta / div) * 180F);
+        float linePitch = (Math.abs(pitchDelta / div) * 180F);
 
-        // Additional strict validation: check if hitbox extends too far from entity
-        double maxExtentX = Math.max(Math.abs(hitbox.minX - entityCenterX), Math.abs(hitbox.maxX - entityCenterX));
-        double maxExtentY = Math.max(Math.abs(hitbox.minY - entityCenterY), Math.abs(hitbox.maxY - entityCenterY));
-        double maxExtentZ = Math.max(Math.abs(hitbox.minZ - entityCenterZ), Math.abs(hitbox.maxZ - entityCenterZ));
+        float targetYawDelta = MathHelper.clamp(yawDelta, -lineYaw, lineYaw) * speed;
+        float targetPitchDelta = MathHelper.clamp(pitchDelta, -linePitch, linePitch) * speed;
 
-        // For players, hitbox should not extend more than 1 block from center in any direction
-        if (entity instanceof PlayerEntity) {
-            if (maxExtentX > 1.0 || maxExtentY > 2.0 || maxExtentZ > 1.0) return false;
+        if (isLookingAtTarget && enableJitter.get()) {
+            float dist = (entity != null) ? (float) entity.distanceTo(mc.player) : 3.0f;
+            float distFactor = MathHelper.clamp(dist / 4.0f, 0.3f, 1.0f);
+            float gaussianYaw = (float) secureRandom.nextGaussian();
+            float gaussianPitch = (float) secureRandom.nextGaussian();
+            float movementStress = MathHelper.clamp(rotationDifference / 10.0f, 0.5f, 1.5f);
+
+            float shakeStrengthYaw = 3.5f * distFactor * movementStress * jitterStrength.get().floatValue();
+            float shakeStrengthPitch = 2.0f * distFactor * movementStress * jitterStrength.get().floatValue();
+
+            float shakeYaw = gaussianYaw * shakeStrengthYaw;
+            float shakePitch = gaussianPitch * shakeStrengthPitch;
+
+            targetYawDelta += shakeYaw;
+            targetPitchDelta += shakePitch;
+        }
+
+        if (gcdFix.get()) {
+            float gcd = getGCDValue();
+            targetYawDelta -= (targetYawDelta % gcd);
+            targetPitchDelta -= (targetPitchDelta % gcd);
+        }
+
+        float fixYaw = currentAngle.getYaw() + targetYawDelta;
+        float fixPitch = currentAngle.getPitch() + targetPitchDelta;
+        fixPitch = MathHelper.clamp(fixPitch, -90.0F, 90.0F);
+        return new Turns(fixYaw, fixPitch);
+    }
+
+    private Turns calculateDelta(Turns current, Turns target) {
+        float yawDelta = MathHelper.wrapDegrees(target.getYaw() - current.getYaw());
+        float pitchDelta = MathHelper.wrapDegrees(target.getPitch() - current.getPitch());
+        return new Turns(yawDelta, pitchDelta);
+    }
+
+    private float getGCDValue() {
+        float sens = (float) (mc.options.getMouseSensitivity().getValue() * 0.6 + 0.2);
+        float t = sens * sens * sens * 8.0f;
+        return t * 0.15f;
+    }
+
+    private float randomLerp(float min, float max) {
+        return MathHelper.lerp(secureRandom.nextFloat(), min, max);
+    }
+
+    private boolean isEntityHittable(Entity entity) {
+        if (entity == null) return false;
+
+        // Check if entity is within attack range
+        Box hitbox = entity.getBoundingBox();
+        if (!PlayerUtils.isWithin(
+            MathHelper.clamp(mc.player.getX(), hitbox.minX, hitbox.maxX),
+            MathHelper.clamp(mc.player.getY(), hitbox.minY, hitbox.maxY),
+            MathHelper.clamp(mc.player.getZ(), hitbox.minZ, hitbox.maxZ),
+            range.get()
+        )) return false;
+
+        // Check wall conditions
+        if (!PlayerUtils.canSeeEntity(entity)) {
+            if (!PlayerUtils.isWithin(entity, wallsRange.get()) && !hitThroughWalls.get()) {
+                return false;
+            }
         }
 
         return true;
     }
 
-    private boolean isWithinReach(Entity target) {
-        if (!grimBypass.get() || !reachCheck.get()) return true;
+    private boolean canAttack(Entity entity, int cooldown) {
+        if (entity == null || !entity.isAlive() || entity.equals(mc.player)) {
+            return false;
+        }
 
-        // Get actual attack distance from player's eyes to center of target's hitbox
-        Vec3d eyePos = new Vec3d(mc.player.getX(), mc.player.getEyeY(), mc.player.getZ());
-        Box targetBox = target.getBoundingBox();
+        // Check attack cooldown
+        if (mc.player.getAttackCooldownProgress(0.5f) < 1.0f) {
+            return false;
+        }
 
-        // Calculate center of hitbox
-        double centerX = (targetBox.minX + targetBox.maxX) / 2.0;
-        double centerY = (targetBox.minY + targetBox.maxY) / 2.0;
-        double centerZ = (targetBox.minZ + targetBox.maxZ) / 2.0;
+        // Enhanced wall check for packet attacks
+        if (!PlayerUtils.canSeeEntity(entity)) {
+            // Allow attack if within walls range or hit through walls is enabled
+            if (!PlayerUtils.isWithin(entity, wallsRange.get()) && !hitThroughWalls.get()) {
+                return false;
+            }
+            // For packet attacks through walls, check if entity is in range
+            if (packetAttackThroughWalls.get() && !PlayerUtils.isWithin(entity, range.get())) {
+                return false;
+            }
+        }
 
-        // Calculate distance to center of hitbox
-        double distance = Math.sqrt(
-            Math.pow(eyePos.x - centerX, 2) +
-            Math.pow(eyePos.y - centerY, 2) +
-            Math.pow(eyePos.z - centerZ, 2)
-        );
+        return true;
+    }
 
-        // Use vanilla entity interaction range as base (3.0 for survival, varies with effects)
-        double baseReach = mc.player.getEntityInteractionRange();
-        double maxReach = Math.min(range.get(), baseReach);
-
-        // No buffer - strict validation to center of hitbox
-        return distance <= maxReach;
+    private AttackTimer getAttackTimer() {
+        return new AttackTimer(hitTimer);
     }
 
     private boolean acceptableWeapon(ItemStack stack) {
@@ -769,6 +787,24 @@ public class KillAura extends Module {
         return weapons.get().contains(Items.TRIDENT) && stack.getItem() instanceof TridentItem;
     }
 
+    public boolean cameraMode() {
+        // Camera is always user-controlled in KillAura
+        // Only head auto-aims when attacking
+        return false;
+    }
+
+    public boolean isCameraDecoupled() {
+        return cameraDecouple.get();
+    }
+
+    public float getUserCameraYaw() {
+        return userCameraYaw;
+    }
+
+    public float getUserCameraPitch() {
+        return userCameraPitch;
+    }
+
     public Entity getTarget() {
         if (!targets.isEmpty()) return targets.getFirst();
         return null;
@@ -780,6 +816,32 @@ public class KillAura extends Module {
         return null;
     }
 
+    // Helper classes
+    public static class Turns {
+        private final float yaw;
+        private final float pitch;
+
+        public Turns(float yaw, float pitch) {
+            this.yaw = yaw;
+            this.pitch = pitch;
+        }
+
+        public float getYaw() { return yaw; }
+        public float getPitch() { return pitch; }
+    }
+
+    public static class AttackTimer {
+        private final int timer;
+
+        public AttackTimer(int timer) {
+            this.timer = timer;
+        }
+
+        public boolean finished(int ticks) {
+            return timer >= ticks;
+        }
+    }
+
     public enum AttackItems {
         Weapons,
         All
@@ -788,7 +850,7 @@ public class KillAura extends Module {
     public enum RotationMode {
         Always,
         OnHit,
-        Aimbot,
+        MakimaAngle,
         None
     }
 

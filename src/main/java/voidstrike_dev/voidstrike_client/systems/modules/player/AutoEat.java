@@ -10,7 +10,6 @@ import voidstrike_dev.voidstrike_client.events.entity.player.ItemUseCrosshairTar
 import voidstrike_dev.voidstrike_client.events.world.TickEvent;
 import voidstrike_dev.voidstrike_client.pathing.PathManagers;
 import voidstrike_dev.voidstrike_client.settings.*;
-import voidstrike_dev.voidstrike_client.settings.*;
 import voidstrike_dev.voidstrike_client.systems.modules.Categories;
 import voidstrike_dev.voidstrike_client.systems.modules.Module;
 import voidstrike_dev.voidstrike_client.systems.modules.Modules;

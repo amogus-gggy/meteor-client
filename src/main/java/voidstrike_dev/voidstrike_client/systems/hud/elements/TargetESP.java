@@ -11,7 +11,7 @@ import voidstrike_dev.voidstrike_client.systems.hud.HudElement;
 import voidstrike_dev.voidstrike_client.systems.hud.HudElementInfo;
 import voidstrike_dev.voidstrike_client.systems.hud.HudRenderer;
 import voidstrike_dev.voidstrike_client.systems.modules.Modules;
-import voidstrike_dev.voidstrike_client.systems.modules.combat.KillAura2;
+import voidstrike_dev.voidstrike_client.systems.modules.combat.KillAura;
 import voidstrike_dev.voidstrike_client.utils.entity.EntityUtils;
 import voidstrike_dev.voidstrike_client.utils.render.color.Color;
 import voidstrike_dev.voidstrike_client.utils.render.color.SettingColor;
@@ -20,7 +20,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 
 public class TargetESP extends HudElement {
-    public static final HudElementInfo<TargetESP> INFO = new HudElementInfo<>(Hud.GROUP, "target-esp", "Displays information about KillAura2 target near center of screen.", TargetESP::new);
+    public static final HudElementInfo<TargetESP> INFO = new HudElementInfo<>(Hud.GROUP, "target-esp", "Displays information about KillAura target near center of screen.", TargetESP::new);
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
@@ -91,7 +91,7 @@ public class TargetESP extends HudElement {
     public void render(HudRenderer renderer) {
         if (!active.get()) return;
         
-        KillAura2 killAura = Modules.get().get(KillAura2.class);
+        KillAura killAura = Modules.get().get(KillAura.class);
         if (killAura == null || !killAura.isActive()) {
             renderText(renderer, "None");
             return;
