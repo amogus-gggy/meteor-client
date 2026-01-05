@@ -251,7 +251,7 @@ public class KillAura2 extends Module {
     private final Setting<Integer> hitDelay = sgTiming.add(new IntSetting.Builder()
         .name("hit-delay")
         .description("How fast you hit the entity in ticks.")
-        .defaultValue(11)
+        .defaultValue(8)
         .min(0)
         .sliderMax(60)
         .visible(customDelay::get)
@@ -272,7 +272,7 @@ public class KillAura2 extends Module {
     private final Setting<Double> rotationSpeed = sgMakima.add(new DoubleSetting.Builder()
         .name("rotation-speed")
         .description("Base rotation speed multiplier.")
-        .defaultValue(1.0)
+        .defaultValue(1.3)
         .min(0.1)
         .sliderMax(3.0)
         .visible(() -> rotation.get() == RotationMode.MakimaAngle)
@@ -305,6 +305,30 @@ public class KillAura2 extends Module {
         .build()
     );
 
+    private final Setting<Boolean> aggressiveMode = sgMakima.add(new BoolSetting.Builder()
+        .name("aggressive-mode")
+        .description("Enables aggressive targeting with faster rotations and attacks.")
+        .defaultValue(true)
+        .visible(() -> rotation.get() == RotationMode.MakimaAngle)
+        .build()
+    );
+
+    private final Setting<Boolean> predictiveAiming = sgMakima.add(new BoolSetting.Builder()
+        .name("predictive-aiming")
+        .description("Predicts target movement for more accurate hits.")
+        .defaultValue(true)
+        .visible(() -> rotation.get() == RotationMode.MakimaAngle)
+        .build()
+    );
+
+    private final Setting<Boolean> instantAttack = sgMakima.add(new BoolSetting.Builder()
+        .name("instant-attack")
+        .description("Attack immediately when target is in range.")
+        .defaultValue(true)
+        .visible(() -> rotation.get() == RotationMode.MakimaAngle)
+        .build()
+    );
+
     private final Setting<Boolean> gcdFix = sgMakima.add(new BoolSetting.Builder()
         .name("gcd-fix")
         .description("Apply GCD fix to rotations.")
@@ -330,6 +354,8 @@ public class KillAura2 extends Module {
     private final Random random = new Random();
     private boolean wasSprinting = false;
     private long lastAttackTime = 0;
+    private Entity lastTarget = null;
+    private int aggressiveTicks = 0;
 
     // MakimaAngle rotation system
     private static final SecureRandom secureRandom = new SecureRandom();
@@ -354,6 +380,8 @@ public class KillAura2 extends Module {
         targets.clear();
         currentRotation = Vec3d.ZERO;
         targetRotation = Vec3d.ZERO;
+        lastTarget = null;
+        aggressiveTicks = 0;
         
         // Initialize user camera angles
         userCameraYaw = mc.player.getYaw();
@@ -467,9 +495,24 @@ public class KillAura2 extends Module {
 
         // Attack with MakimaAngle logic
         if (primary != null && !targets.isEmpty()) {
-            if (canAttack(primary, 180) || !getAttackTimer().finished(150)) {
-                if (mc.player.getAttackCooldownProgress(0.5f) >= 1.0) {
-                    targets.forEach(this::attack);
+            boolean shouldAttackNow = instantAttack.get() ? 
+                canAttack(primary, 180) : 
+                (canAttack(primary, 180) || !getAttackTimer().finished(150));
+                
+            if (shouldAttackNow) {
+                if (aggressiveMode.get() && aggressiveTicks > 0) {
+                    // In aggressive mode, attack even faster
+                    if (mc.player.getAttackCooldownProgress(0.3f) >= 1.0) {
+                        targets.forEach(this::attack);
+                        aggressiveTicks--;
+                    }
+                } else {
+                    if (mc.player.getAttackCooldownProgress(0.5f) >= 1.0) {
+                        targets.forEach(this::attack);
+                        if (aggressiveMode.get()) {
+                            aggressiveTicks = 3; // Next 3 ticks will be more aggressive
+                        }
+                    }
                 }
             }
         }
@@ -512,17 +555,23 @@ public class KillAura2 extends Module {
         if (entity.equals(mc.player) || entity.equals(mc.getCameraEntity())) return false;
         if ((entity instanceof LivingEntity livingEntity && livingEntity.isDead()) || !entity.isAlive()) return false;
 
+        // More aggressive range checking in aggressive mode
+        double checkRange = aggressiveMode.get() ? range.get() + 0.5 : range.get();
+        
         Box hitbox = entity.getBoundingBox();
         if (!PlayerUtils.isWithin(
             MathHelper.clamp(mc.player.getX(), hitbox.minX, hitbox.maxX),
             MathHelper.clamp(mc.player.getY(), hitbox.minY, hitbox.maxY),
             MathHelper.clamp(mc.player.getZ(), hitbox.minZ, hitbox.maxZ),
-            range.get()
+            checkRange
         )) return false;
 
         if (!entities.get().contains(entity.getType())) return false;
         if (ignoreNamed.get() && entity.hasCustomName()) return false;
-        if (!PlayerUtils.canSeeEntity(entity) && !PlayerUtils.isWithin(entity, wallsRange.get())) return false;
+        
+        // More aggressive wall checking in aggressive mode
+        double checkWallsRange = aggressiveMode.get() ? wallsRange.get() + 0.5 : wallsRange.get();
+        if (!PlayerUtils.canSeeEntity(entity) && !PlayerUtils.isWithin(entity, checkWallsRange)) return false;
         if (ignoreTamed.get()) {
             if (entity instanceof Tameable tameable
                 && tameable.getOwner() != null
@@ -559,6 +608,11 @@ public class KillAura2 extends Module {
         float delay = (customDelay.get()) ? hitDelay.get() : 0.5f;
         if (tpsSync.get()) delay /= (TickRate.INSTANCE.getTickRate() / 20);
 
+        // More aggressive delay in aggressive mode
+        if (aggressiveMode.get()) {
+            delay *= 0.7f; // 30% faster attacks
+        }
+
         if (customDelay.get()) {
             if (hitTimer < delay) {
                 hitTimer++;
@@ -577,11 +631,19 @@ public class KillAura2 extends Module {
     }
 
     private void makimaAngleRotate(Entity entity) {
-        Vec3d targetPos = new Vec3d(entity.getX(), entity.getEyeY(), entity.getZ());
+        Vec3d targetPos = getPredictedPosition(entity);
         float[] targetAngles = PlayerUtils.calculateAngle(targetPos);
         
         Turns currentAngle = new Turns(mc.player.getYaw(), mc.player.getPitch());
         Turns targetAngle = new Turns(targetAngles[0], targetAngles[1]);
+        
+        // Track target changes for aggressive mode
+        if (lastTarget != entity) {
+            lastTarget = entity;
+            if (aggressiveMode.get()) {
+                aggressiveTicks = 5; // More aggressive when switching targets
+            }
+        }
         
         Turns newAngle = limitAngleChange(currentAngle, targetAngle, targetPos, entity);
         
@@ -596,6 +658,23 @@ public class KillAura2 extends Module {
         }
     }
 
+    private Vec3d getPredictedPosition(Entity entity) {
+        if (!predictiveAiming.get()) {
+            return new Vec3d(entity.getX(), entity.getEyeY(), entity.getZ());
+        }
+        
+        // Predict target position based on velocity
+        Vec3d velocity = entity.getVelocity();
+        double distance = mc.player.distanceTo(entity);
+        int ticksToPredict = (int) (distance / 8.0); // Predict based on distance
+        
+        double predictedX = entity.getX() + velocity.x * ticksToPredict;
+        double predictedY = entity.getEyeY() + velocity.y * ticksToPredict;
+        double predictedZ = entity.getZ() + velocity.z * ticksToPredict;
+        
+        return new Vec3d(predictedX, predictedY, predictedZ);
+    }
+
     private Turns limitAngleChange(Turns currentAngle, Turns targetAngle, Vec3d vec3d, Entity entity) {
         Turns angleDelta = calculateDelta(currentAngle, targetAngle);
 
@@ -607,12 +686,24 @@ public class KillAura2 extends Module {
         boolean canAttack = entity != null && canAttack(entity, 35);
 
         float speed;
-        if (!isLookingAtTarget) {
-            speed = randomLerp(0.95F, 1.0F);
+        if (aggressiveMode.get()) {
+            // More aggressive speed calculation
+            if (!isLookingAtTarget) {
+                speed = randomLerp(1.2F, 1.4F); // Faster initial rotation
+            } else {
+                float accuracyFactor = MathHelper.clamp(rotationDifference / 15.0f, 0.3f, 1.0f);
+                float baseSpeed = canAttack ? randomLerp(1.1F, 1.3F) : randomLerp(0.8F, 1.0F);
+                speed = baseSpeed * accuracyFactor;
+            }
         } else {
-            float accuracyFactor = MathHelper.clamp(rotationDifference / 20.0f, 0.2f, 1.0f);
-            float baseSpeed = canAttack ? randomLerp(0.9F, 0.98F) : randomLerp(0.5F, 0.7F);
-            speed = baseSpeed * accuracyFactor;
+            // Original logic for non-aggressive mode
+            if (!isLookingAtTarget) {
+                speed = randomLerp(0.95F, 1.0F);
+            } else {
+                float accuracyFactor = MathHelper.clamp(rotationDifference / 20.0f, 0.2f, 1.0f);
+                float baseSpeed = canAttack ? randomLerp(0.9F, 0.98F) : randomLerp(0.5F, 0.7F);
+                speed = baseSpeed * accuracyFactor;
+            }
         }
 
         // Apply rotation speed multiplier
@@ -637,8 +728,11 @@ public class KillAura2 extends Module {
             float gaussianPitch = (float) secureRandom.nextGaussian();
             float movementStress = MathHelper.clamp(rotationDifference / 10.0f, 0.5f, 1.5f);
 
-            float shakeStrengthYaw = 3.5f * distFactor * movementStress * jitterStrength.get().floatValue();
-            float shakeStrengthPitch = 2.0f * distFactor * movementStress * jitterStrength.get().floatValue();
+            // More aggressive jitter in aggressive mode
+            float jitterMultiplier = aggressiveMode.get() ? 1.5f : 1.0f;
+            
+            float shakeStrengthYaw = 3.5f * distFactor * movementStress * jitterStrength.get().floatValue() * jitterMultiplier;
+            float shakeStrengthPitch = 2.0f * distFactor * movementStress * jitterStrength.get().floatValue() * jitterMultiplier;
 
             float shakeYaw = gaussianYaw * shakeStrengthYaw;
             float shakePitch = gaussianPitch * shakeStrengthPitch;

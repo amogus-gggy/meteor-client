@@ -12,8 +12,8 @@ public class MeteorGuiTheme extends MeteorTheme {
     // Colors
 
     {
-        accentColor = color("accent", "Main color of the GUI.", new SettingColor(145, 61, 226));
-        checkboxColor = color("checkbox", "Color of checkbox.", new SettingColor(145, 61, 226));
+        accentColor = color("accent", "Main color of the GUI.", new SettingColor(220, 20, 60));
+        checkboxColor = color("checkbox", "Color of checkbox.", new SettingColor(220, 20, 60));
         plusColor = color("plus", "Color of plus button.", new SettingColor(50, 255, 50));
         minusColor = color("minus", "Color of minus button.", new SettingColor(255, 50, 50));
         favoriteColor = color("favorite", "Color of checked favorite button.", new SettingColor(250, 215, 0));
@@ -82,12 +82,12 @@ public class MeteorGuiTheme extends MeteorTheme {
         sliderHandle = new ThreeStateColorSetting(
                 sgSlider,
                 "slider-handle",
-                new SettingColor(130, 0, 255),
-                new SettingColor(140, 30, 255),
-                new SettingColor(150, 60, 255)
+                new SettingColor(200, 0, 50),
+                new SettingColor(220, 20, 60),
+                new SettingColor(240, 40, 70)
         );
 
-        sliderLeft = color(sgSlider, "slider-left", "Color of slider left part.", new SettingColor(100,35,170));
+        sliderLeft = color(sgSlider, "slider-left", "Color of slider left part.", new SettingColor(180, 20, 50));
         sliderRight = color(sgSlider, "slider-right", "Color of slider right part.", new SettingColor(50, 50, 50));
     }
 

@@ -38,13 +38,12 @@ public abstract class SplashTextResourceSupplierMixin {
     @Unique
     private static List<String> getMeteorSplashes() {
         return List.of(
-                "Meteor on Crack!",
-                "Star Meteor Client on GitHub!",
+                "§cVoidStrike on Crack!",
+                "§cStar VoidStrike Client on GitHub!",
                 "Based utility mod.",
-                "§6MineGame159 §fbased god",
-                "§4meteorclient.com",
-                "§4Meteor on Crack!",
-                "§6Meteor on Crack!"
+                "§cMineGame159 §fbased god",
+                "§cVoidStrike on Crack!",
+                "§cVoidStrike on Crack!"
         );
     }
 

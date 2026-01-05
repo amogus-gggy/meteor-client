@@ -1,13 +1,14 @@
 {
   "schemaVersion": 1,
-  "name": "Meteor Client",
+  "name": "VoidStrike Client",
   "id": "voidstrike-client",
   "version": "${version}",
   "description": "Based utility mod.",
   "authors": [
     "MineGame159",
     "squidoodly",
-    "seasnail"
+    "seasnail",
+    "amogusgggy"
   ],
   "contact": {
     "homepage": "https://meteorclient.com",
@@ -37,7 +38,7 @@
   "accessWidener": "voidstrike-client.accesswidener",
   "custom": {
     "voidstrike-client:build_number": "${build_number}",
-    "voidstrike-client:color": "145,61,226",
+    "voidstrike-client:color": "220,20,60",
     "voidstrike-client:commit": "${commit}",
     "modmenu": {
       "links": {

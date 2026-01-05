@@ -13,6 +13,7 @@ import voidstrike_dev.voidstrike_client.settings.*;
 import voidstrike_dev.voidstrike_client.systems.modules.Categories;
 import voidstrike_dev.voidstrike_client.systems.modules.Module;
 import voidstrike_dev.voidstrike_client.systems.modules.Modules;
+import voidstrike_dev.voidstrike_client.systems.modules.movement.speed.modes.GrimCollide;
 import voidstrike_dev.voidstrike_client.systems.modules.movement.speed.modes.Strafe;
 import voidstrike_dev.voidstrike_client.systems.modules.movement.speed.modes.Vanilla;
 import voidstrike_dev.voidstrike_client.systems.modules.world.Timer;
@@ -57,6 +58,60 @@ public class Speed extends Module {
         .name("speed-limit")
         .description("Limits your speed on servers with very strict anticheats.")
         .visible(() -> speedMode.get() == SpeedModes.Strafe)
+        .defaultValue(false)
+        .build()
+    );
+
+    public final Setting<Double> grimCollideSpeed = sgGeneral.add(new DoubleSetting.Builder()
+        .name("grim-collide-speed")
+        .description("The boost speed when colliding with entities.")
+        .visible(() -> speedMode.get() == SpeedModes.GrimCollide)
+        .defaultValue(0.08)
+        .min(0.01)
+        .sliderMax(0.2)
+        .build()
+    );
+
+    public final Setting<Double> grimCollideRange = sgGeneral.add(new DoubleSetting.Builder()
+        .name("grim-collide-range")
+        .description("Maximum range to find nearest entity for directional boost.")
+        .visible(() -> speedMode.get() == SpeedModes.GrimCollide)
+        .defaultValue(3.0)
+        .min(0.5)
+        .sliderMax(10.0)
+        .build()
+    );
+
+    public final Setting<Double> grimCollideExpand = sgGeneral.add(new DoubleSetting.Builder()
+        .name("grim-collide-expand")
+        .description("Collision box expansion size.")
+        .visible(() -> speedMode.get() == SpeedModes.GrimCollide)
+        .defaultValue(0.5)
+        .min(0.1)
+        .sliderMax(2.0)
+        .build()
+    );
+
+    public final Setting<Boolean> grimCollideOnlyPlayers = sgGeneral.add(new BoolSetting.Builder()
+        .name("grim-collide-only-players")
+        .description("Only boost when colliding with players.")
+        .visible(() -> speedMode.get() == SpeedModes.GrimCollide)
+        .defaultValue(false)
+        .build()
+    );
+
+    public final Setting<Boolean> grimCollideRequireMoving = sgGeneral.add(new BoolSetting.Builder()
+        .name("grim-collide-require-moving")
+        .description("Require player movement to apply speed boost.")
+        .visible(() -> speedMode.get() == SpeedModes.GrimCollide)
+        .defaultValue(true)
+        .build()
+    );
+
+    public final Setting<Boolean> grimCollideRequireUpward = sgGeneral.add(new BoolSetting.Builder()
+        .name("grim-collide-require-upward")
+        .description("Only apply boost when moving upward.")
+        .visible(() -> speedMode.get() == SpeedModes.GrimCollide)
         .defaultValue(false)
         .build()
     );
@@ -139,6 +194,7 @@ public class Speed extends Module {
         switch (mode) {
             case Vanilla -> currentMode = new Vanilla();
             case Strafe -> currentMode = new Strafe();
+            case GrimCollide -> currentMode = new GrimCollide();
         }
     }
 

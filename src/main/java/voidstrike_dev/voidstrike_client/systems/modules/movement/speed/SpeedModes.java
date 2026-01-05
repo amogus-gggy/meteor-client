@@ -7,5 +7,6 @@ package voidstrike_dev.voidstrike_client.systems.modules.movement.speed;
 
 public enum SpeedModes {
     Strafe,
-    Vanilla
+    Vanilla,
+    GrimCollide
 }
